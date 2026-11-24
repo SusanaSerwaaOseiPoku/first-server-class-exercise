@@ -1,132 +1,24 @@
-import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
+import { createStarterNotes } from "./data/db.js";
 import { errorHandler, notFound } from "./middleware/errors.js";
-import findNote from "./middleware/findNote.js";
 import logger from "./middleware/logger.js";
-import validateNote from "./middleware/validateNote.js";
+import requestCounter from "./middleware/requestCounter.js";
+import notesRouter from "./routes/notes.js";
+import statsRouter from "./routes/stats.js";
 
-const PORT = Number(process.env.PORT) || 3002;
-
-export function createStarterNotes() {
-  return [
-    {
-      id: "1",
-      title: "Welcome",
-      body: "This is your first note.",
-      pinned: true,
-    },
-    {
-      id: "2",
-      title: "Class exercise",
-      body: "Build a small Notes API with Express.",
-      pinned: false,
-    },
-    {
-      id: "3",
-      title: "Remember",
-      body: "Check the pinned notes filter.",
-      pinned: true,
-    },
-  ];
-}
-
+export { createStarterNotes };
 export function createApp(notes = createStarterNotes()) {
-  const app = express();
-  app.locals.notes = notes;
-  app.use(logger);
-  app.use(cors());
-  app.use(express.json());
-
-  app.get("/notes", (request, response) => {
-    const result =
-      request.query.pinned === "true"
-        ? notes.filter((note) => note.pinned)
-        : notes;
-    response.json(result);
-  });
-
-  app.get("/notes/:id", findNote, (request, response) => {
-    response.json(request.note);
-  });
-
-  app.post("/notes", validateNote, (request, response) => {
-    const title =
-      typeof request.body?.title === "string" ? request.body.title.trim() : "";
-
-    const body = request.body.body ?? "";
-    if (typeof body !== "string") {
-      return response.status(400).json({ message: "Body must be text." });
-    }
-    if (
-      request.body.pinned !== undefined &&
-      typeof request.body.pinned !== "boolean"
-    ) {
-      return response.status(400).json({ message: "Pinned must be true or false." });
-    }
-
-    const note = {
-      id: randomUUID(),
-      title,
-      body,
-      pinned: request.body.pinned ?? false,
-    };
-    notes.push(note);
-    response.status(201).json(note);
-  });
-
-  app.patch("/notes/:id", findNote, (request, response) => {
-    const note = request.note;
-    const updates = request.body;
-    if (
-      !updates ||
-      typeof updates !== "object" ||
-      Array.isArray(updates) ||
-      Object.keys(updates).length === 0
-    ) {
-      return response.status(400).json({ message: "At least one note field is required." });
-    }
-    if (Object.hasOwn(updates, "title")) {
-      if (typeof updates.title !== "string" || updates.title.trim().length < 3) {
-        return response
-          .status(400)
-          .json({ message: "Title must be at least 3 characters." });
-      }
-      note.title = updates.title.trim();
-    }
-    if (Object.hasOwn(updates, "body")) {
-      if (typeof updates.body !== "string") {
-        return response.status(400).json({ message: "Body must be text." });
-      }
-      note.body = updates.body;
-    }
-    if (Object.hasOwn(updates, "pinned")) {
-      if (typeof updates.pinned !== "boolean") {
-        return response.status(400).json({ message: "Pinned must be true or false." });
-      }
-      note.pinned = updates.pinned;
-    }
-    response.json(note);
-  });
-
-  app.delete("/notes/:id", findNote, (request, response) => {
-    const noteIndex = notes.indexOf(request.note);
-    notes.splice(noteIndex, 1);
-    response.status(204).end();
-  });
-
-  app.use(notFound);
-  app.use(errorHandler);
-
+  const app = express(); app.locals.notes = notes;
+  app.locals.requestStats = { total: 0, byMethod: {} };
+  app.use(logger, requestCounter, cors(), express.json());
+  app.use("/notes", notesRouter);
+  app.use("/stats", statsRouter);
+  app.use(notFound, errorHandler);
   return app;
 }
-
-export const notes = createStarterNotes();
-export const app = createApp(notes);
-
+export const notes = createStarterNotes(), app = createApp(notes);
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  app.listen(PORT, () => {
-    console.log(`Notes API listening at http://localhost:${PORT}`);
-  });
+  app.listen(Number(process.env.PORT) || 3002, () => console.log(`Notes API listening at http://localhost:${Number(process.env.PORT) || 3002}`));
 }

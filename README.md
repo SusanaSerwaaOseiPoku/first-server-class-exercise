@@ -23,6 +23,8 @@ The server listens at `http://localhost:3002`. Run the tests with `npm test`.
 | `POST` | `/notes` | JSON: `title` (at least 3 characters); optional `body`, `pinned` | `201` with the created note | `400` if title is too short or fields have invalid types |
 | `PATCH` | `/notes/:id` | JSON with one or more of `title`, `body`, `pinned` | `200` with the updated note | `400` for invalid fields; `404` if unknown |
 | `DELETE` | `/notes/:id` | ID as a path parameter | `204` with no response body | `404` if unknown |
+| `GET` | `/stats` | - | Request total and counts grouped by HTTP method | - |
 
 Notes have an `id`, `title`, `body`, and boolean `pinned` field. The initial
-notes are **Welcome**, **Class exercise**, and **Remember**.
+notes are **Welcome**, **Class exercise**, and **Remember**. The stats include
+the current `/stats` request.

@@ -108,3 +108,17 @@ test("updates and deletes notes, returning 404 for unknown IDs", async () => {
   const missingDelete = await request("/notes/missing", { method: "DELETE" });
   assert.equal(missingDelete.response.status, 404);
 });
+
+test("counts all requests by method, including the stats request", async () => {
+  const before = (await request("/stats")).payload;
+  const created = await request("/notes", {
+    method: "POST",
+    body: { title: "Counted request" },
+  });
+  assert.equal(created.response.status, 201);
+
+  const stats = (await request("/stats")).payload;
+  assert.equal(stats.total, before.total + 2);
+  assert.equal(stats.byMethod.POST, (before.byMethod.POST ?? 0) + 1);
+  assert.equal(stats.byMethod.GET, before.byMethod.GET + 1);
+});
