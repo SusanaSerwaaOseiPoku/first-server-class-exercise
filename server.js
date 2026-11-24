@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
+import findNote from "./middleware/findNote.js";
 import logger from "./middleware/logger.js";
 import validateNote from "./middleware/validateNote.js";
 
@@ -32,6 +33,7 @@ export function createStarterNotes() {
 
 export function createApp(notes = createStarterNotes()) {
   const app = express();
+  app.locals.notes = notes;
   app.use(logger);
   app.use(cors());
   app.use(express.json());
@@ -44,10 +46,8 @@ export function createApp(notes = createStarterNotes()) {
     response.json(result);
   });
 
-  app.get("/notes/:id", (request, response) => {
-    const note = notes.find((entry) => entry.id === request.params.id);
-    if (!note) return response.status(404).json({ message: "Note not found." });
-    response.json(note);
+  app.get("/notes/:id", findNote, (request, response) => {
+    response.json(request.note);
   });
 
   app.post("/notes", validateNote, (request, response) => {
@@ -75,10 +75,8 @@ export function createApp(notes = createStarterNotes()) {
     response.status(201).json(note);
   });
 
-  app.patch("/notes/:id", (request, response) => {
-    const note = notes.find((entry) => entry.id === request.params.id);
-    if (!note) return response.status(404).json({ message: "Note not found." });
-
+  app.patch("/notes/:id", findNote, (request, response) => {
+    const note = request.note;
     const updates = request.body;
     if (
       !updates ||
@@ -111,11 +109,8 @@ export function createApp(notes = createStarterNotes()) {
     response.json(note);
   });
 
-  app.delete("/notes/:id", (request, response) => {
-    const noteIndex = notes.findIndex((entry) => entry.id === request.params.id);
-    if (noteIndex === -1) {
-      return response.status(404).json({ message: "Note not found." });
-    }
+  app.delete("/notes/:id", findNote, (request, response) => {
+    const noteIndex = notes.indexOf(request.note);
     notes.splice(noteIndex, 1);
     response.status(204).end();
   });
