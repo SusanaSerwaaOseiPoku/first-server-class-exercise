@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
+import { errorHandler, notFound } from "./middleware/errors.js";
 import findNote from "./middleware/findNote.js";
 import logger from "./middleware/logger.js";
 import validateNote from "./middleware/validateNote.js";
@@ -115,9 +116,8 @@ export function createApp(notes = createStarterNotes()) {
     response.status(204).end();
   });
 
-  app.use((_request, response) => {
-    response.status(404).json({ message: "Endpoint not found." });
-  });
+  app.use(notFound);
+  app.use(errorHandler);
 
   return app;
 }

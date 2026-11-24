@@ -51,6 +51,12 @@ test("lists starter notes, looks up IDs, and filters pinned notes", async () => 
   assert.ok(pinned.payload.every((entry) => entry.pinned === true));
 });
 
+test("returns a JSON 404 for unmatched paths", async () => {
+  const missing = await request("/nothing");
+  assert.equal(missing.response.status, 404);
+  assert.deepEqual(missing.payload, { message: "Endpoint not found." });
+});
+
 test("creates notes with a title of at least three characters", async () => {
   const tooShort = await request("/notes", {
     method: "POST",
