@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
+import logger from "./middleware/logger.js";
 
 const PORT = Number(process.env.PORT) || 3002;
 
@@ -30,6 +31,7 @@ export function createStarterNotes() {
 
 export function createApp(notes = createStarterNotes()) {
   const app = express();
+  app.use(logger);
   app.use(cors());
   app.use(express.json());
 
