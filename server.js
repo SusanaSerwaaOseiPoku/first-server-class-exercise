@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import logger from "./middleware/logger.js";
+import validateNote from "./middleware/validateNote.js";
 
 const PORT = Number(process.env.PORT) || 3002;
 
@@ -49,14 +50,9 @@ export function createApp(notes = createStarterNotes()) {
     response.json(note);
   });
 
-  app.post("/notes", (request, response) => {
+  app.post("/notes", validateNote, (request, response) => {
     const title =
       typeof request.body?.title === "string" ? request.body.title.trim() : "";
-    if (title.length < 3) {
-      return response
-        .status(400)
-        .json({ message: "Title must be at least 3 characters." });
-    }
 
     const body = request.body.body ?? "";
     if (typeof body !== "string") {
