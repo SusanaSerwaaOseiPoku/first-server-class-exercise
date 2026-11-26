@@ -21,12 +21,28 @@ const noteSchema = new mongoose.Schema(
       ref: "User",
       required: [true, "Owner is required."],
     },
+    tags: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Tag",
+      },
+    ],
   },
   {
     timestamps: true,
     versionKey: false,
+    id: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   },
 );
+
+noteSchema.virtual("owner", {
+  ref: "User",
+  localField: "ownerId",
+  foreignField: "_id",
+  justOne: true,
+});
 
 const Note = mongoose.models.Note || mongoose.model("Note", noteSchema);
 

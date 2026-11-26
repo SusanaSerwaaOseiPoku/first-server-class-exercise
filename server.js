@@ -6,9 +6,11 @@ import connectDB from "./config/db.js";
 import { errorHandler, notFound } from "./middleware/errors.js";
 import logger from "./middleware/logger.js";
 import requestCounter from "./middleware/requestCounter.js";
+import { seedDefaultTags } from "./models/Tag.js";
 import authRouter from "./routes/auth.js";
 import notesRouter from "./routes/notes.js";
 import statsRouter from "./routes/stats.js";
+import tagsRouter from "./routes/tags.js";
 
 export function createApp() {
   const app = express();
@@ -16,6 +18,7 @@ export function createApp() {
   app.use(logger, requestCounter, cors(), express.json());
   app.use("/auth", authRouter);
   app.use("/notes", notesRouter);
+  app.use("/tags", tagsRouter);
   app.use("/stats", statsRouter);
   app.use(notFound, errorHandler);
   return app;
@@ -23,6 +26,7 @@ export function createApp() {
 
 export async function startServer() {
   await connectDB();
+  await seedDefaultTags();
   const app = createApp();
   const port = Number(process.env.PORT) || 3002;
   return app.listen(port, () =>
