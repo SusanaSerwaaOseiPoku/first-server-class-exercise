@@ -1,30 +1,54 @@
 # Notes API
 
-A small Express and CORS API for the Notes App class exercise. It keeps three
-starter notes in memory, so changes reset when the server restarts.
+An Express and CORS API for the Notes App class exercise, extended with
+`bcrypt` password hashing, JWT login, `requireAuth` middleware, note
+ownership (`ownerId`), and `GET /auth/me`.
 
-## Run
+## Run the API
 
 Requirements: Node.js 20 or newer and npm.
 
+1. Copy `.env.example` to `.env` and set `JWT_SECRET`:
+
 ```sh
-npm ci
+cp .env.example .env
+```
+
+2. Install dependencies and start the API:
+
+```sh
+npm install
 npm run dev
 ```
 
-The server listens at `http://localhost:3002`. Run the tests with `npm test`.
+The server listens at `http://localhost:3002`. Run tests with `npm test`.
+
+> `.env` is listed in `.gitignore` so secrets stay out of Git.
 
 ## Endpoints
 
-| Method | Path | Request | Success | Errors |
-| --- | --- | --- | --- | --- |
-| `GET` | `/notes` | Optional `?pinned=true` | `200` with all notes, or only pinned notes | - |
-| `GET` | `/notes/:id` | ID as a path parameter | `200` with one note | `404` if unknown |
-| `POST` | `/notes` | JSON: `title` (at least 3 characters); optional `body`, `pinned` | `201` with the created note | `400` if title is too short or fields have invalid types |
-| `PATCH` | `/notes/:id` | JSON with one or more of `title`, `body`, `pinned` | `200` with the updated note | `400` for invalid fields; `404` if unknown |
-| `DELETE` | `/notes/:id` | ID as a path parameter | `204` with no response body | `404` if unknown |
-| `GET` | `/stats` | - | Request total and counts grouped by HTTP method | - |
+Protected routes require `Authorization: Bearer <token>`.
 
-Notes have an `id`, `title`, `body`, and boolean `pinned` field. The initial
-notes are **Welcome**, **Class exercise**, and **Remember**. The stats include
-the current `/stats` request.
+| Method | Path | Access | Request | Success | Errors |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/auth/register` | **Public** | JSON: `email`, `password` (min 6 chars) | `201` `{ id, email }` (password hashed with `bcrypt`) | `400` invalid input; `409` repeated email |
+| `POST` | `/auth/login` | **Public** | JSON: `email`, `password` | `200` `{ token, user }` | `401` wrong email or password |
+| `GET` | `/auth/me` | **Protected** (`requireAuth`) | Bearer token | `200` `{ id, email }` (never returns password) | `401` missing or invalid token |
+| `GET` | `/notes` | **Public** | Optional `?pinned=true` | `200` all notes (or pinned only) | - |
+| `GET` | `/notes/:id` | **Public** | ID path parameter | `200` one note | `404` unknown note |
+| `POST` | `/notes` | **Protected** (`requireAuth`) | JSON: `title` (3+ chars), optional `body`, `pinned` | `201` created note with `ownerId: req.user.id` | `400` invalid fields; `401` unauthenticated |
+| `PATCH` | `/notes/:id` | **Protected** (`requireAuth` + owner) | JSON: one or more of `title`, `body`, `pinned` | `200` updated note | `400` invalid fields; `401` unauthenticated; `403` not owner; `404` unknown note |
+| `DELETE` | `/notes/:id` | **Protected** (`requireAuth` + owner) | ID path parameter | `204` no content | `401` unauthenticated; `403` not owner; `404` unknown note |
+| `GET` | `/stats` | **Public** | - | `200` request total and method counts | - |
+
+## React Client (Challenge)
+
+The `client/` folder contains a small React + Axios frontend that logs in,
+calls `GET /auth/me` to render `Hello, <email>`, and lets you view public
+notes or create/update/delete your own notes:
+
+```sh
+cd client
+npm install
+npm run dev
+```
