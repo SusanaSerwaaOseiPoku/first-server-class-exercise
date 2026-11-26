@@ -3,7 +3,7 @@ import axios from "axios";
 const TOKEN_KEY = "notes_api_token";
 
 export const api = axios.create({
-  baseURL: import.meta.env?.VITE_API_BASE_URL || "http://localhost:3002",
+  baseURL: import.meta.env?.VITE_API_URL || "",
 });
 
 export function getToken() {

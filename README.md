@@ -104,14 +104,53 @@ Creates test login `demo@notes.test` / `notes1234` and a starter welcome note.
 - [ ] Push to a GitHub repo and create the Render Web Service with `notes-prod` + new `JWT_SECRET`
 - [ ] Test `/health`, register, login, and creating a note against the live URL (and share with your neighbour!)
 
-## React Client
+## React Client & Vercel Deployment (Step 15)
 
-The `client/` app shows `Hello, <email>` via `GET /auth/me`, **All Notes** /
-**My Notes**, each note's owner email and tag pills, search, tag filter chips
-(`?tag=<tagId>`), and page buttons (`limit=5`):
+The `client/` app uses `VITE_API_URL` (zero `localhost` in `client/src/`),
+shows `Hello, <email>` via `GET /auth/me`, **All Notes** / **My Notes**, owner
+email, tag pills, search, tag filters (`?tag=<tagId>`), and page buttons.
+
+### Run Locally
 
 ```sh
 cd client
+cp .env.example .env
 npm install
 npm run dev
 ```
+
+### Deploy Frontend to Vercel
+
+| Setting | Value |
+| --- | --- |
+| **Root Directory** | `client` |
+| **Framework Preset** | `Vite` |
+| **Build Command** | `npm run build` |
+| **Output Directory** | `dist` |
+| **Environment Variable** | `VITE_API_URL` = `https://<your-notes-api>.onrender.com` |
+
+`client/vercel.json` rewrites every route (`/(.*)`) to `/index.html` so
+refreshing any deep link on Vercel works without a 404.
+
+### Preview Branch CORS Challenge
+
+1. Create a branch, update `<title>` in `client/index.html`, commit, and push:
+   ```sh
+   git checkout -b preview-title
+   # update <title> in client/index.html, then commit
+   git push -u origin preview-title
+   ```
+2. Open the Vercel Preview URL and inspect the CORS error in DevTools.
+3. On Render, add the preview URL to `CLIENT_URL` (comma-separated, e.g.
+   `https://<prod>.vercel.app,https://<preview>.vercel.app`), redeploy/save, and
+   refresh the preview link to confirm CORS succeeds.
+
+### Step 15 Checklist
+
+- [x] Removed `localhost` from `client/src/`; uses `VITE_API_URL` everywhere (`client/.env.example`)
+- [x] `npm run build` and `npm run preview` verified clean
+- [x] Added `client/vercel.json` for SPA deep-link refreshes
+- [x] `CLIENT_URL` CORS supports comma-separated production + preview URLs
+- [ ] Create Vercel project (`Root Directory: client`, `VITE_API_URL`) and set `CLIENT_URL` on Render
+- [ ] Test register, login, add note, and refresh on a deep link from your phone
+- [ ] Push a preview branch with a changed page title, observe the CORS error, and fix it via `CLIENT_URL`
