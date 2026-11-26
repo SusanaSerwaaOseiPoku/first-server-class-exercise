@@ -5,6 +5,10 @@ function getError(error) {
   return error?.response?.data?.message || error?.message || "Request failed.";
 }
 
+function sortPinnedFirst(list) {
+  return [...list].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
+}
+
 export default function App() {
   const [me, setMe] = useState(null);
   const [notes, setNotes] = useState([]);
@@ -72,10 +76,10 @@ export default function App() {
     setStatus("");
     try {
       const response = await api.post("/notes", { title, body, pinned: false });
-      setNotes((current) => [...current, response.data]);
+      setNotes((current) => sortPinnedFirst([response.data, ...current]));
       setTitle("");
       setBody("");
-      setStatus("Note created.");
+      setStatus("Note created and saved in MongoDB.");
     } catch (err) {
       setError(getError(err));
     }
@@ -84,11 +88,13 @@ export default function App() {
   async function handleTogglePin(note) {
     setError("");
     try {
-      const response = await api.patch(`/notes/${note.id}`, {
-        pinned: !note.pinned,
-      });
+      const response = await api.patch(`/notes/${encodeURIComponent(note._id)}/pin`);
       setNotes((current) =>
-        current.map((entry) => (entry.id === note.id ? response.data : entry)),
+        sortPinnedFirst(
+          current.map((entry) =>
+            entry._id === note._id ? response.data : entry,
+          ),
+        ),
       );
     } catch (err) {
       setError(getError(err));
@@ -98,8 +104,8 @@ export default function App() {
   async function handleDelete(noteId) {
     setError("");
     try {
-      await api.delete(`/notes/${noteId}`);
-      setNotes((current) => current.filter((entry) => entry.id !== noteId));
+      await api.delete(`/notes/${encodeURIComponent(noteId)}`);
+      setNotes((current) => current.filter((entry) => entry._id !== noteId));
     } catch (err) {
       setError(getError(err));
     }
@@ -205,33 +211,37 @@ export default function App() {
 
       <section className="card">
         <h2>Notes ({notes.length})</h2>
-        <ul className="note-list">
-          {notes.map((note) => (
-            <li key={note.id} className="note-item">
-              <div>
-                <strong>{note.title}</strong>
-                {note.pinned && <span className="pill">Pinned</span>}
-                <p>{note.body}</p>
-              </div>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => handleTogglePin(note)}
-                >
-                  {note.pinned ? "Unpin" : "Pin"}
-                </button>
-                <button
-                  type="button"
-                  className="danger"
-                  onClick={() => handleDelete(note.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {notes.length === 0 ? (
+          <p className="muted">No notes saved yet. Log in and create one!</p>
+        ) : (
+          <ul className="note-list">
+            {notes.map((note) => (
+              <li key={note._id} className="note-item">
+                <div>
+                  <strong>{note.title}</strong>
+                  {note.pinned && <span className="pill">Pinned</span>}
+                  <p>{note.body}</p>
+                </div>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => handleTogglePin(note)}
+                  >
+                    {note.pinned ? "Unpin" : "Pin"}
+                  </button>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => handleDelete(note._id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
