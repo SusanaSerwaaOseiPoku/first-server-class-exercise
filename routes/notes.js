@@ -4,6 +4,7 @@ import {
   deleteNote,
   getNote,
   listNotes,
+  togglePinNote,
   updateNote,
 } from "../controllers/notesController.js";
 import findNote from "../middleware/findNote.js";
@@ -15,6 +16,7 @@ const router = Router();
 router.get("/", listNotes);
 router.get("/:id", findNote, getNote);
 router.post("/", requireAuth, validateNote, createNote);
+router.patch("/:id/pin", requireAuth, findNote, togglePinNote);
 router.patch("/:id", requireAuth, findNote, updateNote);
 router.delete("/:id", requireAuth, findNote, deleteNote);
 

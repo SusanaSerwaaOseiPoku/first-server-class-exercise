@@ -1,23 +1,21 @@
-import { randomUUID } from "node:crypto";
+import asyncHandler from "../middleware/asyncHandler.js";
+import Note from "../models/Note.js";
 
 function isForbiddenOwner(note, user) {
   return note.ownerId !== null && String(note.ownerId) !== String(user.id);
 }
 
-export function listNotes(request, response) {
-  const notes = request.app.locals.notes;
-  const result =
-    request.query.pinned === "true"
-      ? notes.filter((note) => note.pinned)
-      : notes;
-  response.json(result);
-}
+export const listNotes = asyncHandler(async (request, response) => {
+  const filter = request.query.pinned === "true" ? { pinned: true } : {};
+  const notes = await Note.find(filter).sort({ pinned: -1, createdAt: -1 });
+  response.json(notes);
+});
 
 export function getNote(request, response) {
   response.json(request.note);
 }
 
-export function createNote(request, response) {
+export const createNote = asyncHandler(async (request, response) => {
   const title = request.body.title.trim();
   const body = request.body.body ?? "";
   if (typeof body !== "string") {
@@ -27,21 +25,21 @@ export function createNote(request, response) {
     request.body.pinned !== undefined &&
     typeof request.body.pinned !== "boolean"
   ) {
-    return response.status(400).json({ message: "Pinned must be true or false." });
+    return response
+      .status(400)
+      .json({ message: "Pinned must be true or false." });
   }
 
-  const note = {
-    id: randomUUID(),
+  const note = await Note.create({
     title,
     body,
     pinned: request.body.pinned ?? false,
     ownerId: request.user.id,
-  };
-  request.app.locals.notes.push(note);
-  response.status(201).json(note);
-}
+  });
+  return response.status(201).json(note);
+});
 
-export function updateNote(request, response) {
+export const updateNote = asyncHandler(async (request, response) => {
   const note = request.note;
   if (isForbiddenOwner(note, request.user)) {
     return response
@@ -56,7 +54,9 @@ export function updateNote(request, response) {
     Array.isArray(updates) ||
     Object.keys(updates).length === 0
   ) {
-    return response.status(400).json({ message: "At least one note field is required." });
+    return response
+      .status(400)
+      .json({ message: "At least one note field is required." });
   }
   if (Object.hasOwn(updates, "title")) {
     if (typeof updates.title !== "string" || updates.title.trim().length < 3) {
@@ -74,14 +74,31 @@ export function updateNote(request, response) {
   }
   if (Object.hasOwn(updates, "pinned")) {
     if (typeof updates.pinned !== "boolean") {
-      return response.status(400).json({ message: "Pinned must be true or false." });
+      return response
+        .status(400)
+        .json({ message: "Pinned must be true or false." });
     }
     note.pinned = updates.pinned;
   }
-  response.json(note);
-}
 
-export function deleteNote(request, response) {
+  const updated = await note.save();
+  return response.json(updated);
+});
+
+export const togglePinNote = asyncHandler(async (request, response) => {
+  const note = request.note;
+  if (isForbiddenOwner(note, request.user)) {
+    return response
+      .status(403)
+      .json({ message: "Only the note owner can pin or unpin this note." });
+  }
+
+  note.pinned = !note.pinned;
+  const updated = await note.save();
+  return response.json(updated);
+});
+
+export const deleteNote = asyncHandler(async (request, response) => {
   const note = request.note;
   if (isForbiddenOwner(note, request.user)) {
     return response
@@ -89,7 +106,6 @@ export function deleteNote(request, response) {
       .json({ message: "Only the note owner can delete this note." });
   }
 
-  const notes = request.app.locals.notes;
-  notes.splice(notes.indexOf(note), 1);
-  response.status(204).end();
-}
+  await Note.findByIdAndDelete(note._id);
+  return response.status(204).end();
+});
