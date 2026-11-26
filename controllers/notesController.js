@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+function isForbiddenOwner(note, user) {
+  return note.ownerId !== null && String(note.ownerId) !== String(user.id);
+}
+
 export function listNotes(request, response) {
   const notes = request.app.locals.notes;
   const result =
@@ -31,6 +35,7 @@ export function createNote(request, response) {
     title,
     body,
     pinned: request.body.pinned ?? false,
+    ownerId: request.user.id,
   };
   request.app.locals.notes.push(note);
   response.status(201).json(note);
@@ -38,6 +43,12 @@ export function createNote(request, response) {
 
 export function updateNote(request, response) {
   const note = request.note;
+  if (isForbiddenOwner(note, request.user)) {
+    return response
+      .status(403)
+      .json({ message: "Only the note owner can update this note." });
+  }
+
   const updates = request.body;
   if (
     !updates ||
@@ -71,7 +82,14 @@ export function updateNote(request, response) {
 }
 
 export function deleteNote(request, response) {
+  const note = request.note;
+  if (isForbiddenOwner(note, request.user)) {
+    return response
+      .status(403)
+      .json({ message: "Only the note owner can delete this note." });
+  }
+
   const notes = request.app.locals.notes;
-  notes.splice(notes.indexOf(request.note), 1);
+  notes.splice(notes.indexOf(note), 1);
   response.status(204).end();
 }

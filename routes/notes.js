@@ -7,14 +7,15 @@ import {
   updateNote,
 } from "../controllers/notesController.js";
 import findNote from "../middleware/findNote.js";
+import requireAuth from "../middleware/requireAuth.js";
 import validateNote from "../middleware/validateNote.js";
 
 const router = Router();
 
 router.get("/", listNotes);
 router.get("/:id", findNote, getNote);
-router.post("/", validateNote, createNote);
-router.patch("/:id", findNote, updateNote);
-router.delete("/:id", findNote, deleteNote);
+router.post("/", requireAuth, validateNote, createNote);
+router.patch("/:id", requireAuth, findNote, updateNote);
+router.delete("/:id", requireAuth, findNote, deleteNote);
 
 export default router;
