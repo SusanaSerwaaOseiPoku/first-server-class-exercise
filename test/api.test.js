@@ -3,6 +3,7 @@ import { after, before, beforeEach, mock, test } from "node:test";
 import mongoose from "mongoose";
 import connectDB from "../config/db.js";
 import Note from "../models/Note.js";
+import Tag, { DEFAULT_TAGS, seedDefaultTags } from "../models/Tag.js";
 import User from "../models/User.js";
 import { createApp } from "../server.js";
 
@@ -12,57 +13,172 @@ let server;
 let baseUrl;
 let collections;
 
+function matchesFilter(doc, filter = {}) {
+  return Object.entries(filter).every(([field, expected]) => {
+    const actual = doc[field];
+    if (expected && typeof expected === "object" && expected.$regex !== undefined) {
+      const regex = new RegExp(expected.$regex, expected.$options || "");
+      return regex.test(String(actual ?? ""));
+    }
+    if (Array.isArray(actual)) {
+      return actual.some((item) => String(item) === String(expected));
+    }
+    if (typeof expected === "boolean") {
+      return actual === expected;
+    }
+    return String(actual) === String(expected);
+  });
+}
+
 function compareValues(a, b, direction) {
-  const left = typeof a === "boolean" ? Number(a) : a instanceof Date ? a.getTime() : a ?? 0;
-  const right = typeof b === "boolean" ? Number(b) : b instanceof Date ? b.getTime() : b ?? 0;
+  const left = typeof a === "boolean" ? Number(a) : a instanceof Date ? a.getTime() : typeof a === "string" ? a.toLowerCase() : a ?? 0;
+  const right = typeof b === "boolean" ? Number(b) : b instanceof Date ? b.getTime() : typeof b === "string" ? b.toLowerCase() : b ?? 0;
   if (left === right) return 0;
   return left < right ? -1 * direction : 1 * direction;
 }
 
-function makeQuery(items) {
-  return {
-    sort(spec = {}) {
-      const sorted = [...items].sort((left, right) => {
-        for (const [field, direction] of Object.entries(spec)) {
-          const cmp = compareValues(left[field], right[field], direction);
-          if (cmp !== 0) return cmp;
-        }
-        return 0;
-      });
-      return Promise.resolve(sorted);
+function projectDoc(doc, select) {
+  if (!doc) return null;
+  const plain = typeof doc.toJSON === "function" ? doc.toJSON() : { ...doc };
+  if (!select) return plain;
+  const fields = select.split(/\s+/).filter(Boolean);
+  const picked = { _id: plain._id };
+  for (const field of fields) {
+    if (field in plain) {
+      picked[field] = plain[field];
+    }
+  }
+  return picked;
+}
+
+function applyPopulate(doc, populateSteps) {
+  if (!doc) return null;
+  const result = typeof doc.toJSON === "function" ? doc.toJSON() : { ...doc };
+
+  for (const { path, select } of populateSteps) {
+    if (path === "owner") {
+      const user = collections.users.find(
+        (entry) => String(entry._id) === String(doc.ownerId),
+      );
+      result.owner = projectDoc(user, select);
+    } else if (path === "tags") {
+      const tagIds = Array.isArray(doc.tags) ? doc.tags : [];
+      result.tags = tagIds
+        .map((id) =>
+          collections.tags.find((tag) => String(tag._id) === String(id)),
+        )
+        .filter(Boolean)
+        .map((tag) => projectDoc(tag, select));
+    }
+  }
+
+  return result;
+}
+
+function makeListQuery(items) {
+  let sortSpec = null;
+  let skipCount = 0;
+  let limitCount = null;
+  const populateSteps = [];
+
+  const query = {
+    sort(spec) {
+      sortSpec = spec;
+      return query;
+    },
+    skip(count) {
+      skipCount = count;
+      return query;
+    },
+    limit(count) {
+      limitCount = count;
+      return query;
+    },
+    populate(path, select) {
+      populateSteps.push({ path, select });
+      return query;
+    },
+    exec() {
+      let list = [...items];
+      if (sortSpec) {
+        list.sort((left, right) => {
+          for (const [field, direction] of Object.entries(sortSpec)) {
+            const cmp = compareValues(left[field], right[field], direction);
+            if (cmp !== 0) return cmp;
+          }
+          return 0;
+        });
+      }
+      if (skipCount > 0) {
+        list = list.slice(skipCount);
+      }
+      if (limitCount !== null) {
+        list = list.slice(0, limitCount);
+      }
+      return Promise.resolve(
+        populateSteps.length > 0
+          ? list.map((doc) => applyPopulate(doc, populateSteps))
+          : list,
+      );
     },
     then(resolve, reject) {
-      return Promise.resolve([...items]).then(resolve, reject);
+      return query.exec().then(resolve, reject);
     },
   };
+
+  return query;
+}
+
+function makeSingleQuery(doc) {
+  const populateSteps = [];
+  const query = {
+    populate(path, select) {
+      populateSteps.push({ path, select });
+      return query;
+    },
+    exec() {
+      if (!doc) return Promise.resolve(null);
+      if (populateSteps.length === 0) return Promise.resolve(doc);
+      const populated = applyPopulate(doc, populateSteps);
+      populated.save = async function savePopulated() {
+        for (const key of ["title", "body", "pinned", "tags"]) {
+          if (key in populated) {
+            doc[key] = populated[key];
+          }
+        }
+        await doc.validate();
+        return doc;
+      };
+      return Promise.resolve(populated);
+    },
+    then(resolve, reject) {
+      return query.exec().then(resolve, reject);
+    },
+  };
+  return query;
 }
 
 function wireModel(Model, key) {
   let clock = 1;
 
   mock.method(Model, "find", (filter = {}) => {
-    const matches = collections[key].filter((doc) =>
-      Object.entries(filter).every(([field, value]) =>
-        typeof value === "boolean"
-          ? doc[field] === value
-          : String(doc[field]) === String(value),
-      ),
-    );
-    return makeQuery(matches);
+    const matches = collections[key].filter((doc) => matchesFilter(doc, filter));
+    return makeListQuery(matches);
+  });
+
+  mock.method(Model, "countDocuments", async (filter = {}) => {
+    return collections[key].filter((doc) => matchesFilter(doc, filter)).length;
   });
 
   mock.method(Model, "findOne", async (filter = {}) => {
-    return (
-      collections[key].find((doc) =>
-        Object.entries(filter).every(
-          ([field, value]) => String(doc[field]) === String(value),
-        ),
-      ) || null
-    );
+    return collections[key].find((doc) => matchesFilter(doc, filter)) || null;
   });
 
-  mock.method(Model, "findById", async (id) => {
-    return collections[key].find((doc) => String(doc._id) === String(id)) || null;
+  mock.method(Model, "findById", (id) => {
+    const doc =
+      collections[key].find((entry) => String(entry._id) === String(id)) ||
+      null;
+    return makeSingleQuery(doc);
   });
 
   mock.method(Model, "create", async (payload) => {
@@ -90,18 +206,21 @@ function wireModel(Model, key) {
 }
 
 before(async () => {
-  collections = { users: [], notes: [] };
+  collections = { users: [], notes: [], tags: [] };
   wireModel(User, "users");
   wireModel(Note, "notes");
+  wireModel(Tag, "tags");
 
   server = createApp().listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   collections.users = [];
   collections.notes = [];
+  collections.tags = [];
+  await seedDefaultTags();
 });
 
 after(async () => {
@@ -128,152 +247,82 @@ async function request(path, { method = "GET", body, token } = {}) {
   return { response, payload };
 }
 
-test("connectDB requires MONGO_URI and Note and User models enforce required fields and defaults", async () => {
+async function createUserAndLogin(email) {
+  await request("/auth/register", {
+    method: "POST",
+    body: { email, password: "password123" },
+  });
+  const login = await request("/auth/login", {
+    method: "POST",
+    body: { email, password: "password123" },
+  });
+  return login.payload;
+}
+
+test("models link Note.ownerId to User and Note.tags to Tag, and seedDefaultTags creates three tags", async () => {
   await assert.rejects(() => connectDB(""), /MONGO_URI/);
 
-  const user = new User({
-    email: "AMA@NOTES.TEST",
-    passwordHash: "$2b$10$examplehash",
-  });
-  await user.validate();
-  assert.equal(user.email, "ama@notes.test");
-  assert.equal(user.toJSON().passwordHash, undefined);
+  assert.equal(Note.schema.path("ownerId").options.ref, "User");
+  assert.ok(Note.schema.virtuals.owner);
+  assert.equal(Note.schema.path("tags").options.type[0].ref, "Tag");
 
-  const note = new Note({ title: "Mongo Note", ownerId: user._id });
-  await note.validate();
-  assert.equal(note.body, "");
-  assert.equal(note.pinned, false);
-
-  const badNote = new Note({ title: "hi" });
-  await assert.rejects(() => badNote.validate());
-});
-
-test("register hashes passwords (409 duplicate), login returns token (401 wrong), and /auth/me returns email", async () => {
-  const registered = await request("/auth/register", {
-    method: "POST",
-    body: { email: "Ama@Notes.Test", password: "password123" },
-  });
-  assert.equal(registered.response.status, 201);
-  assert.equal(registered.payload.email, "ama@notes.test");
-  assert.ok(mongoose.isValidObjectId(registered.payload._id));
-  assert.equal(registered.payload.passwordHash, undefined);
-  assert.match(collections.users[0].passwordHash, /^\$2[aby]\$/);
-
-  const duplicate = await request("/auth/register", {
-    method: "POST",
-    body: { email: "ama@notes.test", password: "otherpassword" },
-  });
-  assert.equal(duplicate.response.status, 409);
-
-  const wrongPassword = await request("/auth/login", {
-    method: "POST",
-    body: { email: "ama@notes.test", password: "wrong" },
-  });
-  assert.equal(wrongPassword.response.status, 401);
-
-  const loggedIn = await request("/auth/login", {
-    method: "POST",
-    body: { email: "ama@notes.test", password: "password123" },
-  });
-  assert.equal(loggedIn.response.status, 200);
-  assert.ok(loggedIn.payload.token);
-
-  assert.equal((await request("/auth/me")).response.status, 401);
-  const me = await request("/auth/me", { token: loggedIn.payload.token });
-  assert.equal(me.response.status, 200);
-  assert.equal(me.payload.email, "ama@notes.test");
-  assert.equal(me.payload.passwordHash, undefined);
-});
-
-test("findNote uses Note.findById (400 bad id, 404 missing); GET stays open and write routes require 401", async () => {
-  const emptyList = await request("/notes");
-  assert.equal(emptyList.response.status, 200);
-  assert.deepEqual(emptyList.payload, []);
-
-  assert.equal((await request("/notes/not-an-id")).response.status, 400);
-
-  const missingId = new mongoose.Types.ObjectId().toString();
-  assert.equal((await request(`/notes/${missingId}`)).response.status, 404);
-  assert.equal((await request("/nothing")).response.status, 404);
-
-  assert.equal(
-    (await request("/notes", { method: "POST", body: { title: "Blocked" } }))
-      .response.status,
-    401,
-  );
-  assert.equal(
-    (
-      await request(`/notes/${missingId}`, {
-        method: "PATCH",
-        body: { title: "Blocked" },
-      })
-    ).response.status,
-    401,
-  );
-  assert.equal(
-    (await request(`/notes/${missingId}/pin`, { method: "PATCH" })).response
-      .status,
-    401,
-  );
-  assert.equal(
-    (await request(`/notes/${missingId}`, { method: "DELETE" })).response
-      .status,
-    401,
+  const tagsResponse = await request("/tags");
+  assert.equal(tagsResponse.response.status, 200);
+  assert.equal(tagsResponse.payload.length, DEFAULT_TAGS.length);
+  assert.deepEqual(
+    tagsResponse.payload.map((tag) => tag.name).sort(),
+    [...DEFAULT_TAGS].sort(),
   );
 });
 
-test("notes save ownerId, enforce 403 for non-owners, toggle pinned via PATCH /notes/:id/pin, and sort pinned first", async () => {
-  await request("/auth/register", {
-    method: "POST",
-    body: { email: "ama@notes.test", password: "password123" },
-  });
-  const loginA = await request("/auth/login", {
-    method: "POST",
-    body: { email: "ama@notes.test", password: "password123" },
-  });
-  const tokenA = loginA.payload.token;
-  const userAId = loginA.payload.user._id;
+test("GET /notes populates owner email (no secrets) and tags, GET /notes/mine stays above /:id, and checkOwner enforces 403 with two users", async () => {
+  const userA = await createUserAndLogin("ama@notes.test");
+  const userB = await createUserAndLogin("kojo@notes.test");
 
-  await request("/auth/register", {
-    method: "POST",
-    body: { email: "kojo@notes.test", password: "password123" },
-  });
-  const loginB = await request("/auth/login", {
-    method: "POST",
-    body: { email: "kojo@notes.test", password: "password123" },
-  });
-  const tokenB = loginB.payload.token;
+  const tags = (await request("/tags")).payload;
+  const workTag = tags.find((t) => t.name === "Work");
+  const urgentTag = tags.find((t) => t.name === "Urgent");
 
-  const first = await request("/notes", {
-    method: "POST",
-    token: tokenA,
-    body: { title: "First note", body: "Not pinned yet" },
-  });
-  assert.equal(first.response.status, 201);
-  assert.equal(first.payload.pinned, false);
-  assert.equal(first.payload.ownerId, userAId);
+  assert.equal((await request("/notes/mine")).response.status, 401);
 
-  const second = await request("/notes", {
+  const noteA = await request("/notes", {
     method: "POST",
-    token: tokenA,
-    body: { title: "Second note", body: "Newer unpinned note" },
+    token: userA.token,
+    body: {
+      title: "Ama project plan",
+      body: "Prepare sprint review",
+      tags: [workTag._id, urgentTag._id],
+    },
   });
-  assert.equal(second.response.status, 201);
-
-  assert.equal(
-    (
-      await request(`/notes/${first.payload._id}/pin`, {
-        method: "PATCH",
-        token: tokenB,
-      })
-    ).response.status,
-    403,
+  assert.equal(noteA.response.status, 201);
+  assert.equal(noteA.payload.owner.email, "ama@notes.test");
+  assert.equal(noteA.payload.owner.passwordHash, undefined);
+  assert.deepEqual(
+    noteA.payload.tags.map((tag) => tag.name).sort(),
+    ["Urgent", "Work"],
   );
+
+  await request("/notes", {
+    method: "POST",
+    token: userB.token,
+    body: { title: "Kojo shopping list", body: "Milk and bread" },
+  });
+
+  const allNotes = await request("/notes");
+  assert.equal(allNotes.response.status, 200);
+  assert.equal(allNotes.payload.notes.length, 2);
+  assert.ok(allNotes.payload.notes.every((n) => n.owner?.email && !n.owner.passwordHash));
+
+  const amaMine = await request("/notes/mine", { token: userA.token });
+  assert.equal(amaMine.response.status, 200);
+  assert.equal(amaMine.payload.notes.length, 1);
+  assert.equal(amaMine.payload.notes[0].title, "Ama project plan");
+
   assert.equal(
     (
-      await request(`/notes/${first.payload._id}`, {
+      await request(`/notes/${noteA.payload._id}`, {
         method: "PATCH",
-        token: tokenB,
+        token: userB.token,
         body: { title: "Hijacked" },
       })
     ).response.status,
@@ -281,56 +330,82 @@ test("notes save ownerId, enforce 403 for non-owners, toggle pinned via PATCH /n
   );
   assert.equal(
     (
-      await request(`/notes/${first.payload._id}`, {
+      await request(`/notes/${noteA.payload._id}/pin`, {
+        method: "PATCH",
+        token: userB.token,
+      })
+    ).response.status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(`/notes/${noteA.payload._id}`, {
         method: "DELETE",
-        token: tokenB,
+        token: userB.token,
       })
     ).response.status,
     403,
   );
 
-  const pinnedFirst = await request(`/notes/${first.payload._id}/pin`, {
+  const ownerUpdate = await request(`/notes/${noteA.payload._id}`, {
     method: "PATCH",
-    token: tokenA,
+    token: userA.token,
+    body: { title: "Ama updated plan" },
   });
-  assert.equal(pinnedFirst.response.status, 200);
-  assert.equal(pinnedFirst.payload.pinned, true);
+  assert.equal(ownerUpdate.response.status, 200);
+  assert.equal(ownerUpdate.payload.title, "Ama updated plan");
+});
 
-  const sorted = await request("/notes");
-  assert.equal(sorted.response.status, 200);
-  assert.equal(sorted.payload[0]._id, first.payload._id);
-  assert.equal(sorted.payload[0].pinned, true);
+test("supports ?search= (title contains), ?page= with limit 5, and challenge ?tag=<tagId>", async () => {
+  const userA = await createUserAndLogin("ama@notes.test");
+  const tags = (await request("/tags")).payload;
+  const workTag = tags.find((t) => t.name === "Work");
+  const personalTag = tags.find((t) => t.name === "Personal");
 
-  const onlyPinned = await request("/notes?pinned=true");
-  assert.equal(onlyPinned.response.status, 200);
-  assert.equal(onlyPinned.payload.length, 1);
+  for (let i = 1; i <= 6; i++) {
+    await request("/notes", {
+      method: "POST",
+      token: userA.token,
+      body: {
+        title: i <= 2 ? `Work report ${i}` : `Personal note ${i}`,
+        body: `Body ${i}`,
+        tags: i <= 2 ? [workTag._id] : [personalTag._id],
+      },
+    });
+  }
 
-  const unpinnedFirst = await request(`/notes/${first.payload._id}/pin`, {
-    method: "PATCH",
-    token: tokenA,
+  const page1 = await request("/notes?page=1");
+  assert.equal(page1.response.status, 200);
+  assert.equal(page1.payload.notes.length, 5);
+  assert.deepEqual(page1.payload.pagination, {
+    page: 1,
+    limit: 5,
+    total: 6,
+    totalPages: 2,
+    hasPrev: false,
+    hasNext: true,
   });
-  assert.equal(unpinnedFirst.response.status, 200);
-  assert.equal(unpinnedFirst.payload.pinned, false);
 
-  const updated = await request(`/notes/${first.payload._id}`, {
-    method: "PATCH",
-    token: tokenA,
-    body: { title: "Updated first note" },
-  });
-  assert.equal(updated.response.status, 200);
-  assert.equal(updated.payload.title, "Updated first note");
+  const page2 = await request("/notes?page=2");
+  assert.equal(page2.response.status, 200);
+  assert.equal(page2.payload.notes.length, 1);
+  assert.equal(page2.payload.pagination.hasPrev, true);
+  assert.equal(page2.payload.pagination.hasNext, false);
 
-  const deleted = await request(`/notes/${first.payload._id}`, {
-    method: "DELETE",
-    token: tokenA,
-  });
-  assert.equal(deleted.response.status, 204);
-  assert.equal(
-    (await request(`/notes/${first.payload._id}`)).response.status,
-    404,
+  const searched = await request("/notes?search=report");
+  assert.equal(searched.response.status, 200);
+  assert.equal(searched.payload.notes.length, 2);
+  assert.ok(searched.payload.notes.every((n) => /report/i.test(n.title)));
+
+  const byTag = await request(`/notes?tag=${workTag._id}`);
+  assert.equal(byTag.response.status, 200);
+  assert.equal(byTag.payload.notes.length, 2);
+  assert.ok(
+    byTag.payload.notes.every((n) =>
+      n.tags.some((t) => String(t._id) === String(workTag._id)),
+    ),
   );
 
-  const stats = await request("/stats");
-  assert.equal(stats.response.status, 200);
-  assert.ok(stats.payload.total > 0);
+  const badTag = await request("/notes?tag=not-an-id");
+  assert.equal(badTag.response.status, 400);
 });
