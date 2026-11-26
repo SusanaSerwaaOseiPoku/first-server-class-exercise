@@ -8,7 +8,10 @@ const findNote = asyncHandler(async (request, response, next) => {
     return response.status(400).json({ message: "Invalid note ID." });
   }
 
-  const note = await Note.findById(id);
+  const note = await Note.findById(id)
+    .populate("owner", "email")
+    .populate("tags", "name");
+
   if (!note) {
     return response.status(404).json({ message: "Note not found." });
   }
