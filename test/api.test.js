@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { after, before, beforeEach, mock, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import connectDB from "../config/db.js";
 import Note from "../models/Note.js";
 import Tag, { DEFAULT_TAGS, seedDefaultTags } from "../models/Tag.js";
 import User from "../models/User.js";
-import { createApp } from "../server.js";
+import { createApp, getCorsOptions } from "../server.js";
 
 process.env.JWT_SECRET ||= "test-only-notes-api-jwt-secret";
 
@@ -259,8 +262,60 @@ async function createUserAndLogin(email) {
   return login.payload;
 }
 
-test("models link Note.ownerId to User and Note.tags to Tag, and seedDefaultTags creates three tags", async () => {
+test("models link Note.ownerId to User and Note.tags to Tag, seedDefaultTags creates three tags, and /health reports readyState", async () => {
   await assert.rejects(() => connectDB(""), /MONGO_URI/);
+
+  const pkgPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../package.json",
+  );
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+  assert.equal(pkg.scripts.start, "node server.js");
+  assert.ok(pkg.engines?.node);
+
+  const corsOptions = getCorsOptions("https://notes.example.com");
+  await new Promise((resolve, reject) => {
+    corsOptions.origin("https://notes.example.com", (err, allowed) =>
+      err || !allowed ? reject(err || new Error("Expected allowed")) : resolve(),
+    );
+  });
+  await new Promise((resolve, reject) => {
+    corsOptions.origin("https://blocked.example.com", (err) =>
+      err ? resolve() : reject(new Error("Expected blocked")),
+    );
+  });
+
+  const degraded = await request("/health");
+  assert.equal(degraded.response.status, 503);
+  assert.equal(degraded.payload.status, "degraded");
+  assert.equal(degraded.payload.database.status, "disconnected");
+  assert.equal(degraded.payload.database.readyState, 0);
+
+  const originalReadyState = Object.getOwnPropertyDescriptor(
+    mongoose.connection,
+    "readyState",
+  );
+  Object.defineProperty(mongoose.connection, "readyState", {
+    configurable: true,
+    value: 1,
+  });
+  try {
+    const healthy = await request("/health");
+    assert.equal(healthy.response.status, 200);
+    assert.equal(healthy.payload.status, "ok");
+    assert.equal(healthy.payload.database.status, "connected");
+    assert.equal(healthy.payload.database.readyState, 1);
+  } finally {
+    if (originalReadyState) {
+      Object.defineProperty(
+        mongoose.connection,
+        "readyState",
+        originalReadyState,
+      );
+    } else {
+      delete mongoose.connection.readyState;
+    }
+  }
 
   assert.equal(Note.schema.path("ownerId").options.ref, "User");
   assert.ok(Note.schema.virtuals.owner);

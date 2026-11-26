@@ -53,7 +53,56 @@ Protected routes require `Authorization: Bearer <token>`.
 | `PATCH` | `/notes/:id` | **Protected** (`requireAuth` + `checkOwner`) | Only the owner may update (`403` otherwise) |
 | `PATCH` | `/notes/:id/pin` | **Protected** (`requireAuth` + `checkOwner`) | Toggles `pinned` (`403` for non-owners) |
 | `DELETE` | `/notes/:id` | **Protected** (`requireAuth` + `checkOwner`) | Only the owner may delete (`403` otherwise) |
+| `GET` | `/health` | **Public** | Reports server health & MongoDB `readyState` (`200` connected / `503` disconnected; zero secrets) |
 | `GET` | `/stats` | **Public** | Request counts by HTTP method |
+
+## Deployment (Render + `notes-prod`)
+
+- **Live API URL:** `https://<your-notes-api>.onrender.com` *(replace after Render deploys)*
+- **Health check:** `GET /health` reports `mongoose.connection.readyState` (`1` = `connected`)
+
+### Render Web Service Settings
+
+See [render.yaml](./render.yaml) or configure manually on Render:
+
+| Setting | Value |
+| --- | --- |
+| **Root Directory** | `.` *(blank if pushed as its own repo; or the subfolder path if inside a parent repo)* |
+| **Runtime** | Node (`>=20.0.0`, from `package.json` `engines`) |
+| **Build Command** | `npm install` |
+| **Start Command** | `npm start` |
+| **Health Check Path** | `/health` |
+
+### Environment Variables on Render
+
+| Variable | Value Guidance |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `MONGO_URI` | Atlas URI using production database name **`notes-prod`** (`.../notes-prod?retryWrites=true&w=majority`) |
+| `JWT_SECRET` | **Brand-new** random secret generated for production |
+| `CLIENT_URL` | Deployed frontend origin(s) for CORS |
+
+*(Render sets `PORT` automatically; `.env` is ignored in `.gitignore`.)*
+
+### Seed Production Data (`notes-prod`)
+
+Run once with `MONGO_URI` pointing to `notes-prod` (default tags `Work`,
+`Personal`, `Urgent` also auto-seed on startup):
+
+```sh
+npm run seed
+```
+
+Creates test login `demo@notes.test` / `notes1234` and a starter welcome note.
+
+### Step 14 Checklist
+
+- [x] `PORT` from `process.env`, `start` script, and `engines` in `package.json`
+- [x] `.gitignore` excludes `.env`; `.env.example` lists every variable name
+- [x] Smart `GET /health` reports `mongoose.connection.readyState` (`1` = connected)
+- [x] `CLIENT_URL` CORS config, `seed.js`, and `render.yaml` ready
+- [ ] Push to a GitHub repo and create the Render Web Service with `notes-prod` + new `JWT_SECRET`
+- [ ] Test `/health`, register, login, and creating a note against the live URL (and share with your neighbour!)
 
 ## React Client
 
