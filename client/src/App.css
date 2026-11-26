@@ -137,3 +137,84 @@ button.danger {
 .muted {
   color: #6b7280;
 }
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.list-header h2 {
+  margin: 0;
+}
+
+.search-row {
+  margin: 14px 0 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.search-row input {
+  flex: 1 1 200px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.tag-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-tags {
+  margin-bottom: 14px;
+}
+
+.tag-button {
+  padding: 5px 11px;
+  font-size: 0.84rem;
+}
+
+.note-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag-pill {
+  margin-left: 0;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.owner-line {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+.pagination-bar {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

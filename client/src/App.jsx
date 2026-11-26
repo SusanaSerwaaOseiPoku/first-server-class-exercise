@@ -1,28 +1,68 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
 
 function getError(error) {
   return error?.response?.data?.message || error?.message || "Request failed.";
 }
 
-function sortPinnedFirst(list) {
-  return [...list].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
-}
+const DEFAULT_PAGINATION = {
+  page: 1,
+  limit: 5,
+  total: 0,
+  totalPages: 1,
+  hasPrev: false,
+  hasNext: false,
+};
 
 export default function App() {
   const [me, setMe] = useState(null);
   const [notes, setNotes] = useState([]);
+  const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
+  const [tags, setTags] = useState([]);
+
+  const [scope, setScope] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState("");
+  const [page, setPage] = useState(1);
+
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [selectedTags, setSelectedTags] = useState([]);
+
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
-  async function loadNotes() {
-    const response = await api.get("/notes");
-    setNotes(response.data);
+  const loadNotes = useCallback(async () => {
+    const endpoint = scope === "mine" ? "/notes/mine" : "/notes";
+    try {
+      const response = await api.get(endpoint, {
+        params: {
+          search: search || undefined,
+          tag: activeTag || undefined,
+          page,
+          limit: 5,
+        },
+      });
+      setNotes(response.data.notes ?? []);
+      setPagination(response.data.pagination ?? DEFAULT_PAGINATION);
+    } catch (err) {
+      setError(getError(err));
+      setNotes([]);
+    }
+  }, [activeTag, page, scope, search]);
+
+  async function loadTags() {
+    try {
+      const response = await api.get("/tags");
+      setTags(Array.isArray(response.data) ? response.data : []);
+    } catch {
+      setTags([]);
+    }
   }
 
   async function loadMe() {
@@ -40,9 +80,14 @@ export default function App() {
   }
 
   useEffect(() => {
-    loadNotes().catch((err) => setError(getError(err)));
+    loadTags();
     loadMe();
   }, []);
+
+  useEffect(() => {
+    if (scope === "mine" && !me) return;
+    loadNotes();
+  }, [loadNotes, me, scope]);
 
   async function handleAuthSubmit(event) {
     event.preventDefault();
@@ -66,8 +111,18 @@ export default function App() {
   function handleLogout() {
     setToken("");
     setMe(null);
+    setScope("all");
+    setPage(1);
     setStatus("Logged out.");
     setError("");
+  }
+
+  function toggleFormTag(tagId) {
+    setSelectedTags((current) =>
+      current.includes(tagId)
+        ? current.filter((id) => id !== tagId)
+        : [...current, tagId],
+    );
   }
 
   async function handleCreateNote(event) {
@@ -75,10 +130,17 @@ export default function App() {
     setError("");
     setStatus("");
     try {
-      const response = await api.post("/notes", { title, body, pinned: false });
-      setNotes((current) => sortPinnedFirst([response.data, ...current]));
+      await api.post("/notes", {
+        title,
+        body,
+        pinned: false,
+        tags: selectedTags,
+      });
       setTitle("");
       setBody("");
+      setSelectedTags([]);
+      setPage(1);
+      await loadNotes();
       setStatus("Note created and saved in MongoDB.");
     } catch (err) {
       setError(getError(err));
@@ -88,14 +150,8 @@ export default function App() {
   async function handleTogglePin(note) {
     setError("");
     try {
-      const response = await api.patch(`/notes/${encodeURIComponent(note._id)}/pin`);
-      setNotes((current) =>
-        sortPinnedFirst(
-          current.map((entry) =>
-            entry._id === note._id ? response.data : entry,
-          ),
-        ),
-      );
+      await api.patch(`/notes/${encodeURIComponent(note._id)}/pin`);
+      await loadNotes();
     } catch (err) {
       setError(getError(err));
     }
@@ -105,11 +161,29 @@ export default function App() {
     setError("");
     try {
       await api.delete(`/notes/${encodeURIComponent(noteId)}`);
-      setNotes((current) => current.filter((entry) => entry._id !== noteId));
+      await loadNotes();
     } catch (err) {
       setError(getError(err));
     }
   }
+
+  function handleSearchSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setSearch(searchInput.trim());
+    setPage(1);
+  }
+
+  function handleScopeChange(nextScope) {
+    setError("");
+    setScope(nextScope);
+    setPage(1);
+  }
+
+  const pages = Array.from(
+    { length: pagination.totalPages },
+    (_, index) => index + 1,
+  );
 
   return (
     <div className="page">
@@ -204,23 +278,131 @@ export default function App() {
                 onChange={(event) => setBody(event.target.value)}
               />
             </label>
+            {tags.length > 0 && (
+              <div>
+                <span className="field-label">Tags</span>
+                <div className="tag-row">
+                  {tags.map((tag) => {
+                    const active = selectedTags.includes(tag._id);
+                    return (
+                      <button
+                        key={tag._id}
+                        type="button"
+                        className={active ? "tag-button active" : "tag-button secondary"}
+                        onClick={() => toggleFormTag(tag._id)}
+                      >
+                        {tag.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <button type="submit">Create note</button>
           </form>
         </section>
       )}
 
       <section className="card">
-        <h2>Notes ({notes.length})</h2>
+        <div className="list-header">
+          <h2>
+            {scope === "mine" ? "My Notes" : "All Notes"} ({pagination.total})
+          </h2>
+          <div className="tabs">
+            <button
+              type="button"
+              className={scope === "all" ? "active" : "secondary"}
+              onClick={() => handleScopeChange("all")}
+            >
+              All Notes
+            </button>
+            <button
+              type="button"
+              className={scope === "mine" ? "active" : "secondary"}
+              disabled={!me}
+              onClick={() => handleScopeChange("mine")}
+            >
+              My Notes
+            </button>
+          </div>
+        </div>
+
+        <form className="search-row" onSubmit={handleSearchSubmit}>
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search notes by title..."
+          />
+          <button type="submit">Search</button>
+          {search && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setSearchInput("");
+                setSearch("");
+                setPage(1);
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </form>
+
+        {tags.length > 0 && (
+          <div className="tag-row filter-tags">
+            <button
+              type="button"
+              className={activeTag === "" ? "tag-button active" : "tag-button secondary"}
+              onClick={() => {
+                setActiveTag("");
+                setPage(1);
+              }}
+            >
+              All tags
+            </button>
+            {tags.map((tag) => (
+              <button
+                key={tag._id}
+                type="button"
+                className={
+                  activeTag === tag._id
+                    ? "tag-button active"
+                    : "tag-button secondary"
+                }
+                onClick={() => {
+                  setActiveTag(tag._id);
+                  setPage(1);
+                }}
+              >
+                {tag.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {notes.length === 0 ? (
-          <p className="muted">No notes saved yet. Log in and create one!</p>
+          <p className="muted">No notes match this view yet.</p>
         ) : (
           <ul className="note-list">
             {notes.map((note) => (
               <li key={note._id} className="note-item">
                 <div>
-                  <strong>{note.title}</strong>
-                  {note.pinned && <span className="pill">Pinned</span>}
+                  <div className="note-title-row">
+                    <strong>{note.title}</strong>
+                    {note.pinned && <span className="pill">Pinned</span>}
+                    {Array.isArray(note.tags) &&
+                      note.tags.map((tag) => (
+                        <span key={tag._id} className="pill tag-pill">
+                          {tag.name}
+                        </span>
+                      ))}
+                  </div>
                   <p>{note.body}</p>
+                  <p className="owner-line">
+                    Owner: {note.owner?.email || "Unknown"}
+                  </p>
                 </div>
                 <div className="actions">
                   <button
@@ -242,6 +424,41 @@ export default function App() {
             ))}
           </ul>
         )}
+
+        <nav className="pagination-bar" aria-label="Notes pages">
+          <span className="muted">
+            Page {pagination.page} of {pagination.totalPages}
+          </span>
+          <div className="actions">
+            <button
+              type="button"
+              className="secondary"
+              disabled={!pagination.hasPrev}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </button>
+            {pages.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                className={pageNumber === pagination.page ? "active" : "secondary"}
+                aria-current={pageNumber === pagination.page ? "page" : undefined}
+                onClick={() => setPage(pageNumber)}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="secondary"
+              disabled={!pagination.hasNext}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </nav>
       </section>
     </div>
   );
