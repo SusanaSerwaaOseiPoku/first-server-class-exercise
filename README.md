@@ -155,3 +155,22 @@ refreshing any deep link on Vercel works without a 404.
 - [ ] Create Vercel project (`Root Directory: client`, `VITE_API_URL`) and set `CLIENT_URL` on Render
 - [ ] Test register, login, add note, and refresh on a deep link from your phone
 - [ ] Push a preview branch with a changed page title, observe the CORS error, and fix it via `CLIENT_URL`
+
+## Automated Test Suite (Step 17)
+
+The API uses **Vitest** and **Supertest** (`vitest.config.js` + `test/setup.js`) with `app.js` split from `server.js` so tests run directly against Express without opening a permanent server port.
+
+### Running the Tests
+
+```sh
+npm test
+```
+
+- Uses a dedicated **`notes-test`** database (`MONGO_URI_TEST` in `.env.example`) whose name is verified to end in `-test` before any test runs, and empties all collections after every test so tests never touch `notes-dev` or `notes-prod`.
+- If `MONGO_URI_TEST` is not configured locally, `test/setup.js` automatically runs against an isolated in-memory `notes-test` database adapter with the same `-test` safety guard.
+
+### What the Tests Cover
+
+- **Shared `getToken` helper** (`test/helpers.js`) registers and logs in fresh test users.
+- **Auth (`test/auth.test.js`):** register (`201`, hashed password, no `passwordHash` leaked), repeated email (`409`), wrong password (`401`), missing token on protected routes (`401`), and `GET /auth/me` (`200`).
+- **Notes & Failure Paths (`test/notes.test.js`):** `GET /notes`, `POST /notes` (`201`) with populated owner & tags, `GET /notes/mine`, search/tag/pagination, missing or short title (`400`), updating/pinning/deleting another user's note (`403`), bad note ID (`400`), missing note ID (`404`), `/health`, `requireDb` (`503`), and production `errorHandler` (`500`).
