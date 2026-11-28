@@ -34,7 +34,7 @@ async function seed() {
   }
 
   console.log(
-    `Seed complete in database "${mongoose.connection.name}". Test login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`,
+    `Seed complete in database "${mongoose.connection.name}". Demo user ready: ${DEMO_EMAIL}`,
   );
   await mongoose.disconnect();
 }

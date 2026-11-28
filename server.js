@@ -7,6 +7,7 @@ import connectDB from "./config/db.js";
 import { errorHandler, notFound } from "./middleware/errors.js";
 import logger from "./middleware/logger.js";
 import requestCounter from "./middleware/requestCounter.js";
+import requireDb from "./middleware/requireDb.js";
 import { seedDefaultTags } from "./models/Tag.js";
 import authRouter from "./routes/auth.js";
 import notesRouter from "./routes/notes.js";
@@ -90,16 +91,16 @@ export function createApp() {
     response.status(httpStatus).json(body);
   });
 
-  app.use("/auth", authRouter);
-  app.use("/notes", notesRouter);
-  app.use("/tags", tagsRouter);
+  app.use("/auth", requireDb, authRouter);
+  app.use("/notes", requireDb, notesRouter);
+  app.use("/tags", requireDb, tagsRouter);
   app.use("/stats", statsRouter);
   app.use(notFound, errorHandler);
   return app;
 }
 
 export async function startServer() {
-  await connectDB();
+  await connectDB(process.env.MONGO_URI, { exitOnFailure: true });
   await seedDefaultTags();
   const app = createApp();
   const port = Number(process.env.PORT) || 3002;
