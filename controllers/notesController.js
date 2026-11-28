@@ -141,6 +141,42 @@ export const createNote = asyncHandler(async (request, response) => {
   return response.status(201).json(populated || created);
 });
 
+function applyNoteUpdates(note, updates) {
+  if (Object.hasOwn(updates, "title")) {
+    if (
+      typeof updates.title !== "string" ||
+      updates.title.trim().length < MIN_TITLE_LENGTH
+    ) {
+      return `Title must be at least ${MIN_TITLE_LENGTH} characters.`;
+    }
+    note.title = updates.title.trim();
+  }
+
+  if (Object.hasOwn(updates, "body")) {
+    if (typeof updates.body !== "string") {
+      return "Body must be text.";
+    }
+    note.body = updates.body;
+  }
+
+  if (Object.hasOwn(updates, "pinned")) {
+    if (typeof updates.pinned !== "boolean") {
+      return "Pinned must be true or false.";
+    }
+    note.pinned = updates.pinned;
+  }
+
+  if (Object.hasOwn(updates, "tags")) {
+    const tagsCheck = validateTagsInput(updates.tags);
+    if (!tagsCheck.ok) {
+      return tagsCheck.message;
+    }
+    note.tags = tagsCheck.tags;
+  }
+
+  return null;
+}
+
 export const updateNote = asyncHandler(async (request, response) => {
   const note = request.note;
   const updates = request.body;
@@ -154,37 +190,10 @@ export const updateNote = asyncHandler(async (request, response) => {
       .status(400)
       .json({ message: "At least one note field is required." });
   }
-  if (Object.hasOwn(updates, "title")) {
-    if (
-      typeof updates.title !== "string" ||
-      updates.title.trim().length < MIN_TITLE_LENGTH
-    ) {
-      return response.status(400).json({
-        message: `Title must be at least ${MIN_TITLE_LENGTH} characters.`,
-      });
-    }
-    note.title = updates.title.trim();
-  }
-  if (Object.hasOwn(updates, "body")) {
-    if (typeof updates.body !== "string") {
-      return response.status(400).json({ message: "Body must be text." });
-    }
-    note.body = updates.body;
-  }
-  if (Object.hasOwn(updates, "pinned")) {
-    if (typeof updates.pinned !== "boolean") {
-      return response
-        .status(400)
-        .json({ message: "Pinned must be true or false." });
-    }
-    note.pinned = updates.pinned;
-  }
-  if (Object.hasOwn(updates, "tags")) {
-    const tagsCheck = validateTagsInput(updates.tags);
-    if (!tagsCheck.ok) {
-      return response.status(400).json({ message: tagsCheck.message });
-    }
-    note.tags = tagsCheck.tags;
+
+  const validationError = applyNoteUpdates(note, updates);
+  if (validationError) {
+    return response.status(400).json({ message: validationError });
   }
 
   await note.save();

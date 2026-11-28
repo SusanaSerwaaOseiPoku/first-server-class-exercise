@@ -15,6 +15,14 @@ function normalizeBody(body) {
     : {};
 }
 
+function toPublicUser(user) {
+  return {
+    _id: user._id,
+    id: String(user._id),
+    email: user.email,
+  };
+}
+
 export const register = asyncHandler(async (request, response) => {
   const body = normalizeBody(request.body);
   const email =
@@ -32,8 +40,8 @@ export const register = asyncHandler(async (request, response) => {
     });
   }
 
-  const existing = await User.findOne({ email });
-  if (existing) {
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
     return response
       .status(409)
       .json({ message: "An account with this email already exists." });
@@ -42,11 +50,7 @@ export const register = asyncHandler(async (request, response) => {
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const user = await User.create({ email, passwordHash });
 
-  return response.status(201).json({
-    _id: user._id,
-    id: String(user._id),
-    email: user.email,
-  });
+  return response.status(201).json(toPublicUser(user));
 });
 
 export const login = asyncHandler(async (request, response) => {
@@ -64,8 +68,8 @@ export const login = asyncHandler(async (request, response) => {
     return response.status(401).json({ message: "Invalid email or password." });
   }
 
-  const matches = await bcrypt.compare(password, user.passwordHash);
-  if (!matches) {
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordMatches) {
     return response.status(401).json({ message: "Invalid email or password." });
   }
 
@@ -77,11 +81,7 @@ export const login = asyncHandler(async (request, response) => {
 
   return response.json({
     token,
-    user: {
-      _id: user._id,
-      id: String(user._id),
-      email: user.email,
-    },
+    user: toPublicUser(user),
   });
 });
 
@@ -90,9 +90,5 @@ export const getMe = asyncHandler(async (request, response) => {
   if (!user) {
     return response.status(401).json({ message: "Invalid or expired token." });
   }
-  return response.json({
-    _id: user._id,
-    id: String(user._id),
-    email: user.email,
-  });
+  return response.json(toPublicUser(user));
 });

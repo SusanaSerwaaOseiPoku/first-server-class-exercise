@@ -1,5 +1,7 @@
 import jwt from "jsonwebtoken";
 
+const BEARER_HEADER_PATTERN = /^Bearer\s+(.+)$/i;
+
 export function getJwtSecret() {
   const secret = process.env.JWT_SECRET?.trim();
   if (!secret) {
@@ -11,18 +13,20 @@ export function getJwtSecret() {
 }
 
 export default function requireAuth(request, response, next) {
-  const header = request.headers.authorization;
-  const match =
-    typeof header === "string" ? /^Bearer\s+(.+)$/i.exec(header.trim()) : null;
-  if (!match) {
+  const authorizationHeader = request.headers.authorization;
+  const bearerTokenMatch =
+    typeof authorizationHeader === "string"
+      ? BEARER_HEADER_PATTERN.exec(authorizationHeader.trim())
+      : null;
+  if (!bearerTokenMatch) {
     return response.status(401).json({ message: "Authentication required." });
   }
 
   try {
-    const payload = jwt.verify(match[1], getJwtSecret());
+    const tokenPayload = jwt.verify(bearerTokenMatch[1], getJwtSecret());
     request.user = {
-      id: String(payload.sub ?? payload.id),
-      email: payload.email,
+      id: String(tokenPayload.sub ?? tokenPayload.id),
+      email: tokenPayload.email,
     };
     return next();
   } catch (error) {
