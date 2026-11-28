@@ -4,6 +4,12 @@ import Note from "../models/Note.js";
 
 const DEFAULT_LIMIT = 5;
 
+function populateNoteById(noteId) {
+  return Note.findById(noteId)
+    .populate("owner", "email")
+    .populate("tags", "name");
+}
+
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -125,9 +131,7 @@ export const createNote = asyncHandler(async (request, response) => {
     tags: tagsCheck.tags ?? [],
   });
 
-  const populated = await Note.findById(created._id)
-    .populate("owner", "email")
-    .populate("tags", "name");
+  const populated = await populateNoteById(created._id);
 
   return response.status(201).json(populated || created);
 });
@@ -177,9 +181,7 @@ export const updateNote = asyncHandler(async (request, response) => {
 
   await note.save();
 
-  const populated = await Note.findById(note._id)
-    .populate("owner", "email")
-    .populate("tags", "name");
+  const populated = await populateNoteById(note._id);
 
   return response.json(populated || note);
 });
@@ -189,9 +191,7 @@ export const togglePinNote = asyncHandler(async (request, response) => {
   note.pinned = !note.pinned;
   await note.save();
 
-  const populated = await Note.findById(note._id)
-    .populate("owner", "email")
-    .populate("tags", "name");
+  const populated = await populateNoteById(note._id);
 
   return response.json(populated || note);
 });
