@@ -1,3 +1,8 @@
+const MONGO_DUPLICATE_KEY_CODE = 11000;
+const MIN_HTTP_ERROR_STATUS = 400;
+const MAX_HTTP_ERROR_STATUS = 600;
+const INTERNAL_SERVER_ERROR_STATUS = 500;
+
 export function notFound(_request, _response, next) {
   const error = new Error("Endpoint not found.");
   error.status = 404;
@@ -13,7 +18,7 @@ export function errorHandler(error, request, response, _next) {
       Object.values(error.errors || {})[0]?.message || "Validation failed.";
     return response.status(400).json({ message: firstMessage });
   }
-  if (error?.code === 11000) {
+  if (error?.code === MONGO_DUPLICATE_KEY_CODE) {
     return response
       .status(409)
       .json({ message: "An account with this email already exists." });
@@ -26,11 +31,13 @@ export function errorHandler(error, request, response, _next) {
   }
 
   const status =
-    Number.isInteger(error?.status) && error.status >= 400 && error.status < 600
+    Number.isInteger(error?.status) &&
+    error.status >= MIN_HTTP_ERROR_STATUS &&
+    error.status < MAX_HTTP_ERROR_STATUS
       ? error.status
-      : 500;
+      : INTERNAL_SERVER_ERROR_STATUS;
 
-  if (status >= 500) {
+  if (status >= INTERNAL_SERVER_ERROR_STATUS) {
     console.error(
       `[ERROR] ${request?.method || "REQ"} ${request?.originalUrl || ""} -> ${error?.message || "Unexpected server error"}`,
     );

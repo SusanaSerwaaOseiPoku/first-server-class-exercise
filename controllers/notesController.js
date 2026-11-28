@@ -2,7 +2,11 @@ import mongoose from "mongoose";
 import asyncHandler from "../middleware/asyncHandler.js";
 import Note from "../models/Note.js";
 
+const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 5;
+const MAX_LIMIT = 50;
+const MIN_TITLE_LENGTH = 3;
+const DECIMAL_RADIX = 10;
 
 function populateNoteById(noteId) {
   return Note.findById(noteId)
@@ -54,13 +58,14 @@ async function queryNotes(query, baseFilter = {}) {
     filter.tags = rawTag;
   }
 
-  const parsedPage = Number.parseInt(query.page, 10);
-  const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const parsedPage = Number.parseInt(query.page, DECIMAL_RADIX);
+  const page =
+    Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_PAGE;
 
-  const parsedLimit = Number.parseInt(query.limit, 10);
+  const parsedLimit = Number.parseInt(query.limit, DECIMAL_RADIX);
   const limit =
     Number.isInteger(parsedLimit) && parsedLimit > 0
-      ? Math.min(parsedLimit, 50)
+      ? Math.min(parsedLimit, MAX_LIMIT)
       : DEFAULT_LIMIT;
 
   const skip = (page - 1) * limit;
@@ -150,10 +155,13 @@ export const updateNote = asyncHandler(async (request, response) => {
       .json({ message: "At least one note field is required." });
   }
   if (Object.hasOwn(updates, "title")) {
-    if (typeof updates.title !== "string" || updates.title.trim().length < 3) {
-      return response
-        .status(400)
-        .json({ message: "Title must be at least 3 characters." });
+    if (
+      typeof updates.title !== "string" ||
+      updates.title.trim().length < MIN_TITLE_LENGTH
+    ) {
+      return response.status(400).json({
+        message: `Title must be at least ${MIN_TITLE_LENGTH} characters.`,
+      });
     }
     note.title = updates.title.trim();
   }

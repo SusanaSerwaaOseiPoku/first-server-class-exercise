@@ -6,6 +6,8 @@ import User from "../models/User.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SALT_ROUNDS = 10;
+const MIN_PASSWORD_LENGTH = 6;
+const JWT_EXPIRES_IN = "2h";
 
 function normalizeBody(body) {
   return body !== null && typeof body === "object" && !Array.isArray(body)
@@ -24,10 +26,10 @@ export const register = asyncHandler(async (request, response) => {
       .status(400)
       .json({ message: "A valid email address is required." });
   }
-  if (password.length < 6) {
-    return response
-      .status(400)
-      .json({ message: "Password must be at least 6 characters." });
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return response.status(400).json({
+      message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+    });
   }
 
   const existing = await User.findOne({ email });
@@ -70,7 +72,7 @@ export const login = asyncHandler(async (request, response) => {
   const token = jwt.sign(
     { sub: String(user._id), email: user.email },
     getJwtSecret(),
-    { expiresIn: "2h" },
+    { expiresIn: JWT_EXPIRES_IN },
   );
 
   return response.json({

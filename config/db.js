@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+const DB_CONNECT_TIMEOUT_MS = 10000;
+
 export default async function connectDB(
   uri = process.env.MONGO_URI,
   { exitOnFailure = false } = {},
@@ -17,7 +19,7 @@ export default async function connectDB(
 
   try {
     const connection = await mongoose.connect(connectionUri, {
-      serverSelectionTimeoutMS: 10000,
+      serverSelectionTimeoutMS: DB_CONNECT_TIMEOUT_MS,
     });
     console.info(
       `Connected to MongoDB (${connection.connection.host}/${connection.connection.name})`,

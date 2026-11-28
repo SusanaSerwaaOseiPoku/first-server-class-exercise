@@ -8,6 +8,7 @@ import User from "./models/User.js";
 
 const DEMO_EMAIL = "demo@notes.test";
 const DEMO_PASSWORD = "notes1234";
+const BCRYPT_SALT_ROUNDS = 10;
 
 async function seed() {
   await connectDB();
@@ -15,7 +16,7 @@ async function seed() {
 
   let demoUser = await User.findOne({ email: DEMO_EMAIL });
   if (!demoUser) {
-    const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+    const passwordHash = await bcrypt.hash(DEMO_PASSWORD, BCRYPT_SALT_ROUNDS);
     demoUser = await User.create({ email: DEMO_EMAIL, passwordHash });
   }
 
