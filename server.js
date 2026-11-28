@@ -11,7 +11,7 @@ export async function startServer() {
   await seedDefaultTags();
   const port = Number(process.env.PORT) || 3002;
   return app.listen(port, () =>
-    console.log(`Notes API listening on port ${port}`),
+    console.info(`Notes API listening on port ${port}`),
   );
 }
 

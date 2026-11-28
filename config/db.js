@@ -19,7 +19,7 @@ export default async function connectDB(
     const connection = await mongoose.connect(connectionUri, {
       serverSelectionTimeoutMS: 10000,
     });
-    console.log(
+    console.info(
       `Connected to MongoDB (${connection.connection.host}/${connection.connection.name})`,
     );
     return connection;

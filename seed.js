@@ -33,7 +33,7 @@ async function seed() {
     });
   }
 
-  console.log(
+  console.info(
     `Seed complete in database "${mongoose.connection.name}". Demo user ready: ${DEMO_EMAIL}`,
   );
   await mongoose.disconnect();
