@@ -174,3 +174,16 @@ npm test
 - **Shared `getToken` helper** (`test/helpers.js`) registers and logs in fresh test users.
 - **Auth (`test/auth.test.js`):** register (`201`, hashed password, no `passwordHash` leaked), repeated email (`409`), wrong password (`401`), missing token on protected routes (`401`), and `GET /auth/me` (`200`).
 - **Notes & Failure Paths (`test/notes.test.js`):** `GET /notes`, `POST /notes` (`201`) with populated owner & tags, `GET /notes/mine`, search/tag/pagination, missing or short title (`400`), updating/pinning/deleting another user's note (`403`), bad note ID (`400`), missing note ID (`404`), `/health`, `requireDb` (`503`), and production `errorHandler` (`500`).
+
+## Linting, Formatting & Refactoring (Step 18)
+
+```sh
+npm run lint
+npm run format:check
+npm run format
+```
+
+- **Prettier** (`.prettierrc`, `.prettierignore`) and **ESLint** (`eslint.config.js`) enforce consistent formatting, strict equality, no unused variables, `preserve-caught-error`, and no `console.log` calls (`no-console`).
+- **ESLint Challenge Bug Fixed:** ESLint's `preserve-caught-error` caught `config/db.js` throwing a wrapped `Error` without `{ cause: error }`; fixed and covered by a regression test in `test/notes.test.js`.
+- **Refactors (each verified with `npm run lint` and `npm test`):** `checkId` middleware + `populateNoteById` helper (repeats), named constants replacing magic numbers (mystery numbers), and splitting `updateNote` + clearer auth helpers (long function & names).
+- See [CODE_REVIEW.md](./CODE_REVIEW.md) for the partner review checklist.
