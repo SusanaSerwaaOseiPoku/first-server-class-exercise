@@ -54,23 +54,17 @@ export const login = asyncHandler(async (request, response) => {
   const password = typeof body.password === "string" ? body.password : "";
 
   if (!email || !password) {
-    return response
-      .status(401)
-      .json({ message: "Invalid email or password." });
+    return response.status(401).json({ message: "Invalid email or password." });
   }
 
   const user = await User.findOne({ email });
   if (!user) {
-    return response
-      .status(401)
-      .json({ message: "Invalid email or password." });
+    return response.status(401).json({ message: "Invalid email or password." });
   }
 
   const matches = await bcrypt.compare(password, user.passwordHash);
   if (!matches) {
-    return response
-      .status(401)
-      .json({ message: "Invalid email or password." });
+    return response.status(401).json({ message: "Invalid email or password." });
   }
 
   const token = jwt.sign(

@@ -40,49 +40,49 @@ The server listens at `http://localhost:3002`. Run tests with `npm test`.
 
 Protected routes require `Authorization: Bearer <token>`.
 
-| Method | Path | Access | Notes |
-| --- | --- | --- | --- |
-| `POST` | `/auth/register` | **Public** | Hashes password with `bcrypt`; `409` for duplicate email |
-| `POST` | `/auth/login` | **Public** | Returns `{ token, user }`; `401` for wrong details |
-| `GET` | `/auth/me` | **Protected** (`requireAuth`) | Returns `{ _id, id, email }` (never password) |
-| `GET` | `/tags` | **Public** | Lists seeded tags (`Work`, `Personal`, `Urgent`) |
-| `GET` | `/notes` | **Public** | Populates `owner` (`email`) & `tags` (`name`); supports `?search=`, `?tag=<tagId>`, `?pinned=true`, `?page=` (limit 5); sorted pinned-first; returns `{ notes, pagination }` |
-| `GET` | `/notes/mine` | **Protected** (`requireAuth`) | Mounted **above** `/:id`; returns only the logged-in user's notes |
-| `GET` | `/notes/:id` | **Public** | `findNote` (`Note.findById`); `400` bad ID, `404` missing |
-| `POST` | `/notes` | **Protected** (`requireAuth`) | Saves `ownerId: req.user.id` and optional `tags: [tagId]` |
-| `PATCH` | `/notes/:id` | **Protected** (`requireAuth` + `checkOwner`) | Only the owner may update (`403` otherwise) |
-| `PATCH` | `/notes/:id/pin` | **Protected** (`requireAuth` + `checkOwner`) | Toggles `pinned` (`403` for non-owners) |
-| `DELETE` | `/notes/:id` | **Protected** (`requireAuth` + `checkOwner`) | Only the owner may delete (`403` otherwise) |
-| `GET` | `/health` | **Public** | Reports server health & MongoDB `readyState` (`200` connected / `503` disconnected; zero secrets) |
-| `GET` | `/stats` | **Public** | Request counts by HTTP method |
+| Method   | Path             | Access                                       | Notes                                                                                                                                                                        |
+| -------- | ---------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/auth/register` | **Public**                                   | Hashes password with `bcrypt`; `409` for duplicate email                                                                                                                     |
+| `POST`   | `/auth/login`    | **Public**                                   | Returns `{ token, user }`; `401` for wrong details                                                                                                                           |
+| `GET`    | `/auth/me`       | **Protected** (`requireAuth`)                | Returns `{ _id, id, email }` (never password)                                                                                                                                |
+| `GET`    | `/tags`          | **Public**                                   | Lists seeded tags (`Work`, `Personal`, `Urgent`)                                                                                                                             |
+| `GET`    | `/notes`         | **Public**                                   | Populates `owner` (`email`) & `tags` (`name`); supports `?search=`, `?tag=<tagId>`, `?pinned=true`, `?page=` (limit 5); sorted pinned-first; returns `{ notes, pagination }` |
+| `GET`    | `/notes/mine`    | **Protected** (`requireAuth`)                | Mounted **above** `/:id`; returns only the logged-in user's notes                                                                                                            |
+| `GET`    | `/notes/:id`     | **Public**                                   | `findNote` (`Note.findById`); `400` bad ID, `404` missing                                                                                                                    |
+| `POST`   | `/notes`         | **Protected** (`requireAuth`)                | Saves `ownerId: req.user.id` and optional `tags: [tagId]`                                                                                                                    |
+| `PATCH`  | `/notes/:id`     | **Protected** (`requireAuth` + `checkOwner`) | Only the owner may update (`403` otherwise)                                                                                                                                  |
+| `PATCH`  | `/notes/:id/pin` | **Protected** (`requireAuth` + `checkOwner`) | Toggles `pinned` (`403` for non-owners)                                                                                                                                      |
+| `DELETE` | `/notes/:id`     | **Protected** (`requireAuth` + `checkOwner`) | Only the owner may delete (`403` otherwise)                                                                                                                                  |
+| `GET`    | `/health`        | **Public**                                   | Reports server health & MongoDB `readyState` (`200` connected / `503` disconnected; zero secrets)                                                                            |
+| `GET`    | `/stats`         | **Public**                                   | Request counts by HTTP method                                                                                                                                                |
 
 ## Deployment (Render + `notes-prod`)
 
-- **Live API URL:** `https://<your-notes-api>.onrender.com` *(replace after Render deploys)*
+- **Live API URL:** `https://<your-notes-api>.onrender.com` _(replace after Render deploys)_
 - **Health check:** `GET /health` reports `mongoose.connection.readyState` (`1` = `connected`)
 
 ### Render Web Service Settings
 
 See [render.yaml](./render.yaml) or configure manually on Render:
 
-| Setting | Value |
-| --- | --- |
-| **Root Directory** | `.` *(blank if pushed as its own repo; or the subfolder path if inside a parent repo)* |
-| **Runtime** | Node (`>=20.0.0`, from `package.json` `engines`) |
-| **Build Command** | `npm install` |
-| **Start Command** | `npm start` |
-| **Health Check Path** | `/health` |
+| Setting               | Value                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| **Root Directory**    | `.` _(blank if pushed as its own repo; or the subfolder path if inside a parent repo)_ |
+| **Runtime**           | Node (`>=20.0.0`, from `package.json` `engines`)                                       |
+| **Build Command**     | `npm install`                                                                          |
+| **Start Command**     | `npm start`                                                                            |
+| **Health Check Path** | `/health`                                                                              |
 
 ### Environment Variables on Render
 
-| Variable | Value Guidance |
-| --- | --- |
-| `NODE_ENV` | `production` |
-| `MONGO_URI` | Atlas URI using production database name **`notes-prod`** (`.../notes-prod?retryWrites=true&w=majority`) |
-| `JWT_SECRET` | **Brand-new** random secret generated for production |
-| `CLIENT_URL` | Deployed frontend origin(s) for CORS |
+| Variable     | Value Guidance                                                                                           |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`   | `production`                                                                                             |
+| `MONGO_URI`  | Atlas URI using production database name **`notes-prod`** (`.../notes-prod?retryWrites=true&w=majority`) |
+| `JWT_SECRET` | **Brand-new** random secret generated for production                                                     |
+| `CLIENT_URL` | Deployed frontend origin(s) for CORS                                                                     |
 
-*(Render sets `PORT` automatically; `.env` is ignored in `.gitignore`.)*
+_(Render sets `PORT` automatically; `.env` is ignored in `.gitignore`.)_
 
 ### Seed Production Data (`notes-prod`)
 
@@ -121,12 +121,12 @@ npm run dev
 
 ### Deploy Frontend to Vercel
 
-| Setting | Value |
-| --- | --- |
-| **Root Directory** | `client` |
-| **Framework Preset** | `Vite` |
-| **Build Command** | `npm run build` |
-| **Output Directory** | `dist` |
+| Setting                  | Value                                                    |
+| ------------------------ | -------------------------------------------------------- |
+| **Root Directory**       | `client`                                                 |
+| **Framework Preset**     | `Vite`                                                   |
+| **Build Command**        | `npm run build`                                          |
+| **Output Directory**     | `dist`                                                   |
 | **Environment Variable** | `VITE_API_URL` = `https://<your-notes-api>.onrender.com` |
 
 `client/vercel.json` rewrites every route (`/(.*)`) to `/index.html` so

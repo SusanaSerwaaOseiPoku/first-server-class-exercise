@@ -220,7 +220,9 @@ function wireInMemoryModel(Model, key) {
   let clock = 1;
 
   vi.spyOn(Model, "find").mockImplementation((filter = {}) => {
-    const matches = collections[key].filter((doc) => matchesFilter(doc, filter));
+    const matches = collections[key].filter((doc) =>
+      matchesFilter(doc, filter),
+    );
     return makeListQuery(matches);
   });
 
