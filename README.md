@@ -151,6 +151,7 @@ refreshing any deep link on Vercel works without a 404.
 - [x] `npm run build` and `npm run preview` verified clean
 - [x] Added `client/vercel.json` for SPA deep-link refreshes
 - [x] `CLIENT_URL` CORS supports comma-separated production + preview URLs
+- [x] Production hardening: plain 500s in production (`errorHandler`), `requireDb` (`503`), timing logger, 15s Axios timeout + `getErrorMessage` + **Try again**, and [RUNBOOK.md](./RUNBOOK.md)
 - [ ] Create Vercel project (`Root Directory: client`, `VITE_API_URL`) and set `CLIENT_URL` on Render
 - [ ] Test register, login, add note, and refresh on a deep link from your phone
 - [ ] Push a preview branch with a changed page title, observe the CORS error, and fix it via `CLIENT_URL`

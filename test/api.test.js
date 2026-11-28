@@ -5,6 +5,7 @@ import { after, before, beforeEach, mock, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import connectDB from "../config/db.js";
+import { errorHandler } from "../middleware/errors.js";
 import Note from "../models/Note.js";
 import Tag, { DEFAULT_TAGS, seedDefaultTags } from "../models/Tag.js";
 import User from "../models/User.js";
@@ -15,6 +16,14 @@ process.env.JWT_SECRET ||= "test-only-notes-api-jwt-secret";
 let server;
 let baseUrl;
 let collections;
+let originalReadyState;
+
+function setReadyState(value) {
+  Object.defineProperty(mongoose.connection, "readyState", {
+    configurable: true,
+    value,
+  });
+}
 
 function matchesFilter(doc, filter = {}) {
   return Object.entries(filter).every(([field, expected]) => {
@@ -209,6 +218,12 @@ function wireModel(Model, key) {
 }
 
 before(async () => {
+  originalReadyState = Object.getOwnPropertyDescriptor(
+    mongoose.connection,
+    "readyState",
+  );
+  setReadyState(1);
+
   collections = { users: [], notes: [], tags: [] };
   wireModel(User, "users");
   wireModel(Note, "notes");
@@ -220,6 +235,7 @@ before(async () => {
 });
 
 beforeEach(async () => {
+  setReadyState(1);
   collections.users = [];
   collections.notes = [];
   collections.tags = [];
@@ -228,6 +244,15 @@ beforeEach(async () => {
 
 after(async () => {
   mock.restoreAll();
+  if (originalReadyState) {
+    Object.defineProperty(
+      mongoose.connection,
+      "readyState",
+      originalReadyState,
+    );
+  } else {
+    delete mongoose.connection.readyState;
+  }
   await new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
@@ -285,36 +310,57 @@ test("models link Note.ownerId to User and Note.tags to Tag, seedDefaultTags cre
     );
   });
 
+  setReadyState(0);
   const degraded = await request("/health");
   assert.equal(degraded.response.status, 503);
   assert.equal(degraded.payload.status, "degraded");
   assert.equal(degraded.payload.database.status, "disconnected");
   assert.equal(degraded.payload.database.readyState, 0);
 
-  const originalReadyState = Object.getOwnPropertyDescriptor(
-    mongoose.connection,
-    "readyState",
-  );
-  Object.defineProperty(mongoose.connection, "readyState", {
-    configurable: true,
-    value: 1,
-  });
+  const blockedByRequireDb = await request("/notes");
+  assert.equal(blockedByRequireDb.response.status, 503);
+
+  setReadyState(1);
+  const healthy = await request("/health");
+  assert.equal(healthy.response.status, 200);
+  assert.equal(healthy.payload.status, "ok");
+  assert.equal(healthy.payload.database.status, "connected");
+  assert.equal(healthy.payload.database.readyState, 1);
+
+  const prevNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
   try {
-    const healthy = await request("/health");
-    assert.equal(healthy.response.status, 200);
-    assert.equal(healthy.payload.status, "ok");
-    assert.equal(healthy.payload.database.status, "connected");
-    assert.equal(healthy.payload.database.readyState, 1);
+    let capturedStatus = 0;
+    let capturedBody = null;
+    const mockRes = {
+      status(code) {
+        capturedStatus = code;
+        return this;
+      },
+      json(body) {
+        capturedBody = body;
+        return this;
+      },
+    };
+    errorHandler(
+      new Error("sensitive internal database detail"),
+      { method: "GET", originalUrl: "/boom" },
+      mockRes,
+      () => {},
+    );
+    assert.equal(capturedStatus, 500);
+    assert.equal(
+      capturedBody.message,
+      "Something went wrong on the server. Please try again later.",
+    );
+
+    errorHandler({ name: "CastError" }, {}, mockRes, () => {});
+    assert.equal(capturedStatus, 400);
+
+    errorHandler({ code: 11000 }, {}, mockRes, () => {});
+    assert.equal(capturedStatus, 409);
   } finally {
-    if (originalReadyState) {
-      Object.defineProperty(
-        mongoose.connection,
-        "readyState",
-        originalReadyState,
-      );
-    } else {
-      delete mongoose.connection.readyState;
-    }
+    process.env.NODE_ENV = prevNodeEnv;
   }
 
   assert.equal(Note.schema.path("ownerId").options.ref, "User");
