@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import app, { getCorsOptions } from "../app.js";
 import connectDB from "../config/db.js";
 import { errorHandler } from "../middleware/errors.js";
@@ -216,8 +216,30 @@ describe("Notes endpoints (/notes) and health/hardening checks", () => {
     expect(degraded.body.status).toBe("degraded");
     expect(blocked.status).toBe(503);
 
-    // Assert connectDB rejects empty URI and CORS enforces allowlist
+    // Assert connectDB rejects empty URI and preserves root cause when mongoose.connect fails
     await expect(connectDB("")).rejects.toThrow(/MONGO_URI/);
+
+    const rootCause = new Error("ECONNREFUSED atlas");
+    const connectSpy = vi
+      .spyOn(mongoose, "connect")
+      .mockRejectedValueOnce(rootCause);
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      let caughtError;
+      try {
+        await connectDB("mongodb://127.0.0.1:27017/notes-test");
+      } catch (error) {
+        caughtError = error;
+      }
+      expect(caughtError).toBeInstanceOf(Error);
+      expect(caughtError.message).toMatch(/Could not connect to MongoDB/);
+      expect(caughtError.cause).toBe(rootCause);
+    } finally {
+      connectSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    }
 
     const corsOptions = getCorsOptions("https://notes.example.com");
     await expect(

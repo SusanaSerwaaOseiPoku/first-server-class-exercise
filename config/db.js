@@ -29,6 +29,6 @@ export default async function connectDB(
     if (exitOnFailure) {
       process.exit(1);
     }
-    throw new Error(message);
+    throw new Error(message, { cause: error });
   }
 }
