@@ -103,6 +103,18 @@ button.danger {
   color: #991b1b;
 }
 
+.retry-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.retry-box p {
+  margin: 0;
+}
+
 .note-list {
   list-style: none;
   padding: 0;

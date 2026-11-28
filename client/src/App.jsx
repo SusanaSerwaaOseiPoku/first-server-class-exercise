@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, getToken, setToken } from "./api.js";
-
-function getError(error) {
-  return error?.response?.data?.message || error?.message || "Request failed.";
-}
+import { api, getErrorMessage, getToken, setToken } from "./api.js";
 
 const DEFAULT_PAGINATION = {
   page: 1,
@@ -17,6 +13,8 @@ const DEFAULT_PAGINATION = {
 export default function App() {
   const [me, setMe] = useState(null);
   const [notes, setNotes] = useState([]);
+  const [loadingNotes, setLoadingNotes] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
   const [tags, setTags] = useState([]);
 
@@ -39,6 +37,8 @@ export default function App() {
 
   const loadNotes = useCallback(async () => {
     const endpoint = scope === "mine" ? "/notes/mine" : "/notes";
+    setLoadingNotes(true);
+    setLoadError("");
     try {
       const response = await api.get(endpoint, {
         params: {
@@ -51,21 +51,23 @@ export default function App() {
       setNotes(response.data.notes ?? []);
       setPagination(response.data.pagination ?? DEFAULT_PAGINATION);
     } catch (err) {
-      setError(getError(err));
+      setLoadError(getErrorMessage(err, "Could not load notes."));
       setNotes([]);
+    } finally {
+      setLoadingNotes(false);
     }
   }, [activeTag, page, scope, search]);
 
-  async function loadTags() {
+  const loadTags = useCallback(async () => {
     try {
       const response = await api.get("/tags");
       setTags(Array.isArray(response.data) ? response.data : []);
     } catch {
       setTags([]);
     }
-  }
+  }, []);
 
-  async function loadMe() {
+  const loadMe = useCallback(async () => {
     if (!getToken()) {
       setMe(null);
       return;
@@ -77,17 +79,23 @@ export default function App() {
       setToken("");
       setMe(null);
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadTags();
     loadMe();
-  }, []);
+  }, [loadMe, loadTags]);
 
   useEffect(() => {
     if (scope === "mine" && !me) return;
     loadNotes();
   }, [loadNotes, me, scope]);
+
+  function handleTryAgain() {
+    setError("");
+    loadTags();
+    loadNotes();
+  }
 
   async function handleAuthSubmit(event) {
     event.preventDefault();
@@ -104,7 +112,7 @@ export default function App() {
       setPassword("");
       setStatus(`Signed in via /auth/me as ${meResponse.data.email}`);
     } catch (err) {
-      setError(getError(err));
+      setError(getErrorMessage(err));
     }
   }
 
@@ -143,7 +151,7 @@ export default function App() {
       await loadNotes();
       setStatus("Note created and saved in MongoDB.");
     } catch (err) {
-      setError(getError(err));
+      setError(getErrorMessage(err));
     }
   }
 
@@ -153,7 +161,7 @@ export default function App() {
       await api.patch(`/notes/${encodeURIComponent(note._id)}/pin`);
       await loadNotes();
     } catch (err) {
-      setError(getError(err));
+      setError(getErrorMessage(err));
     }
   }
 
@@ -163,7 +171,7 @@ export default function App() {
       await api.delete(`/notes/${encodeURIComponent(noteId)}`);
       await loadNotes();
     } catch (err) {
-      setError(getError(err));
+      setError(getErrorMessage(err));
     }
   }
 
@@ -382,7 +390,18 @@ export default function App() {
           </div>
         )}
 
-        {notes.length === 0 ? (
+        {loadingNotes ? (
+          <p className="muted" role="status">
+            Loading notes...
+          </p>
+        ) : loadError ? (
+          <div className="banner error retry-box" role="alert">
+            <p>{loadError}</p>
+            <button type="button" className="secondary" onClick={handleTryAgain}>
+              Try again
+            </button>
+          </div>
+        ) : notes.length === 0 ? (
           <p className="muted">No notes match this view yet.</p>
         ) : (
           <ul className="note-list">
